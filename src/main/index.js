@@ -359,6 +359,13 @@ app.on('ready', () => {
     }
     integrations.on("stdout", addLogLines);
     integrations.on("stderr", addLogLines);
+    // TODO-NICK: this is kinda gross. this is a corda-specific message
+    // we need to not have this stuff in main.idnex.js
+    integrations.on("sshData", (data) => {
+      if (mainWindow) {
+        mainWindow.webContents.send("sshData", data);
+      }
+    });
     integrations.on("error", async _error => {
       let error = pojofyError(_error);
       mainWindow.webContents.send(SET_SYSTEM_ERROR, error);

@@ -19,7 +19,8 @@ const agent = new https.Agent({
 
 class IO {
   constructor(context) {
-    const createMsgEmitter = (...args) => context.emit.bind(context, "message", ...args);
+    this.context = context;
+    const createMsgEmitter = (...args) => this.context.emit.bind(this.context, "message", ...args);
     this.sendProgress = createMsgEmitter("progress");
     this.sendError = createMsgEmitter("error");
     this.sendStdErr = createMsgEmitter("stderr");

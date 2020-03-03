@@ -1,10 +1,12 @@
 import connect from "../../../../renderer/screens/helpers/connect";
-
+import {Terminal} from "xterm";
 import React, { Component } from "react";
 import NodeLink from "../components/NodeLink";
 import CordAppLink from "../components/CordAppLink";
 import TransactionLink from "../components/TransactionLink";
 import TransactionData from "../transaction-data";
+import { ipcRenderer } from "electron";
+require("xterm/css/xterm.css");
 
 // this is taken from braid
 const VERSION_REGEX = /^(.*?)(?:-(?:(?:\d|\.)+))\.jar?$/;
@@ -20,6 +22,8 @@ class NodeDetails extends Component {
     super(props);
 
     this.state = {node: this.findNodeFromProps(), nodes:null, notaries:null, cordapps: null, transactions: null};
+    this.xtermRef = React.createRef();
+    this.term = new Terminal();
   }
 
   findNodeFromProps(){
@@ -31,6 +35,18 @@ class NodeDetails extends Component {
 
   componentDidMount(){
     this.refresh();
+    // TODO-NICK: not sure if componentDidMount is the right place for this?
+    // maybe it is. /shrug
+    this.term.open(this.xtermRef.current);
+    const safeName = this.state.node.safeName
+    const term = this.term;
+    ipcRenderer.on("sshData", (_event, {node, data}) => {
+      if (node !== safeName) return;
+      term.write(data);
+    });
+    term.onData(data => {
+      ipcRenderer.send("xtermData", {node: safeName, data});
+    });
   }
 
   componentDidUpdate(prevProps) {
@@ -316,6 +332,8 @@ class NodeDetails extends Component {
               <main>{this.getTransactions()}</main>
             </div>
           </div>
+          <span>TODO-NICK: this doesn't even belong here in this UI component</span>
+          <div ref={this.xtermRef}></div>
         </main>
       </section>
     );

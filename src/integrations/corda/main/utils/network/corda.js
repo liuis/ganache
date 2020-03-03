@@ -1,5 +1,6 @@
 const { exec, spawn } = require("child_process");
 const { join } = require("path");
+const { ipcMain } = require("electron");
 const node_ssh = require("node-ssh");
 const StreamingMessageHandler = require("./streaming-message-handler");
 const noop = () => {};
@@ -174,6 +175,14 @@ class Corda {
       })
       this.ssh = ssh;
       this.status = "started";
+      const stream = await ssh.requestShell();
+      ipcMain.on("xtermData", (_event, {node, data}) => {
+        if (node !== this.entity.safeName) return;
+        stream.write(data);
+      });
+      stream.on("data", data => {
+        this._io.context.emit.call(this._io.context, "message", "sshData", {node: this.entity.safeName, data: data.toString("utf-8")});
+      });
       resolve(ssh);
     } catch(e) {
       await this.stop(true);
