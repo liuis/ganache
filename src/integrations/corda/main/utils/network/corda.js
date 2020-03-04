@@ -175,6 +175,10 @@ class Corda {
       })
       this.ssh = ssh;
       this.status = "started";
+
+
+
+      // TODO-NICK <this is the part that was added>
       const stream = await ssh.requestShell();
       ipcMain.on("xtermData", (_event, {node, data}) => {
         if (node !== this.entity.safeName) return;
@@ -183,6 +187,10 @@ class Corda {
       stream.on("data", data => {
         this._io.context.emit.call(this._io.context, "message", "sshData", {node: this.entity.safeName, data: data.toString("utf-8")});
       });
+      // TODO-NICK </this ends the part that was added>
+      
+
+
       resolve(ssh);
     } catch(e) {
       await this.stop(true);
