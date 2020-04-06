@@ -52,6 +52,7 @@ const isDevMode = process.execPath.match(/[\\/]electron/) !== null;
 const isDevelopment = process.env.NODE_ENV !== 'production';
 
 let mainWindow = null;
+const { default: installExtension, REDUX_DEVTOOLS, REACT_DEVELOPER_TOOLS } = require('electron-devtools-installer');
 
 process.on("uncaughtException", err => {
   if (mainWindow && err) {
@@ -125,6 +126,17 @@ const performShutdownTasks = async (integrations) => {
   }
 };
 
+function addLogLines(data, context = undefined) {
+  // `mainWindow` can be null/undefined here if the process is killed
+  // (common when developing)
+  if (mainWindow) {
+    mainWindow.webContents.send(ADD_LOG_LINES, data.toString().split(/\n/g), context);
+  } else {
+    // eslint-disable-next-line no-console
+    console.error(data.toString());
+  }
+}
+
 // create main BrowserWindow when electron is ready
 app.on('ready', () => {
   const global = new GlobalSettings(path.join(USERDATA_PATH, "global"));
@@ -143,6 +155,7 @@ app.on('ready', () => {
   });
   integrations.on("progress", function(message, minDuration = null) {
     mainWindow.webContents.send(SET_PROGRESS, message, minDuration);
+    addLogLines(message + "\n");
   });
   
   const workspaceManager = integrations.workspaceManager;
@@ -188,14 +201,18 @@ app.on('ready', () => {
     frame: true,
     icon: getIconPath(),
     webPreferences: {
-      nodeIntegration: true
+      nodeIntegration: true,
+      enableRemoteModule:true
     }
   });
 
   // Open the DevTools.
   if (isDevMode) {
-    //installExtension(REACT_DEVELOPER_TOOLS);
-    //mainWindow.webContents.openDevTools();
+    installExtension(REACT_DEVELOPER_TOOLS).then(() => {
+      installExtension(REDUX_DEVTOOLS).then(() => {
+        mainWindow.webContents.openDevTools();
+      });
+    });
   }
 
   if (isDevelopment) {
@@ -352,16 +369,6 @@ app.on('ready', () => {
       }
     });
 
-    function addLogLines(data, context) {
-      // `mainWindow` can be null/undefined here if the process is killed
-      // (common when developing)
-      if (mainWindow) {
-        mainWindow.webContents.send(ADD_LOG_LINES, data.toString().split(/\n/g), context);
-      } else {
-        // eslint-disable-next-line no-console
-        console.error(data.toString());
-      }
-    }
     integrations.on("stdout", addLogLines);
     integrations.on("stderr", addLogLines);
     integrations.on("error", async _error => {
@@ -381,7 +388,7 @@ app.on('ready', () => {
         flavor
       });
       try {
-        await extras.downloadAll(true);
+        await extras.downloadRequired(true);
         mainWindow.webContents.send(DOWNLOAD_EXTRAS, {
           status: "success",
           flavor
@@ -487,11 +494,11 @@ app.on('ready', () => {
     );
 
     startupMode = STARTUP_MODE.NORMAL;
-    await integrations.startServer();
-
-    // this sends the network interfaces to the renderer process for
-    //  enumering in the config screen. it sends repeatedly
-    continuouslySendNetworkInterfaces();
+    if (await integrations.startServer()){
+      // this sends the network interfaces to the renderer process for
+      //  enumering in the config screen. it sends repeatedly
+      continuouslySendNetworkInterfaces();
+    }
   });
 
   ipcMain.on(OPEN_NEW_WORKSPACE_CONFIG, async (_event, flavor = "ethereum") => {
@@ -534,7 +541,9 @@ app.on('ready', () => {
 
     if (flavor === "ethereum") {
       await integrations.startChain();
-      await integrations.startServer();
+      if (!(await integrations.startServer())) {
+        return;
+      }
     } else {
       if (workspace) {
         const globalSettings = global.getAll();
@@ -622,10 +631,10 @@ app.on('ready', () => {
 
       startupMode = STARTUP_MODE.NORMAL;
 
-      await integrations.startServer();
-
-      // send the interfaces again once on restart
-      sendNetworkInterfaces();
+      if (await integrations.startServer()){
+        // send the interfaces again once on restart
+        sendNetworkInterfaces();
+      }
     }
   });
 

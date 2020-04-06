@@ -1,15 +1,12 @@
 import connect from "../../../../renderer/screens/helpers/connect";
-
-import React, { Component } from "react";
-import NodeLink from "../components/NodeLink";
-import CordAppLink from "../components/CordAppLink";
 import TransactionLink from "../components/TransactionLink";
+import CordAppLink from "../components/CordAppLink";
 import TransactionData from "../transaction-data";
 import { CancellationToken } from "../screens/utils";
+import NodeLink from "../components/NodeLink";
+import React, { Component } from "react";
 import { startNode } from "../../../../common/redux/config/actions";
-
-// this is taken from braid
-const VERSION_REGEX = /^(.*?)(?:-(?:(?:\d|\.)+))\.jar?$/;
+import { cordaNickname } from "../utils/nickname";
 
 function filterNodeBy(nodeToMatch) {
   return (node) => {
@@ -210,7 +207,7 @@ class NodeDetails extends Component {
   }
 
   getWorkspaceCordapp(name) {
-    return this.props.config.settings.workspace.projects.find(cordapp => VERSION_REGEX.exec(cordapp)[1].toLowerCase().endsWith(name.toLowerCase()));
+    return this.props.config.settings.workspace.jars.find(cordapp => cordaNickname(cordapp).endsWith(name.toLowerCase()));
   }
 
   getCordapps(){
@@ -322,7 +319,7 @@ class NodeDetails extends Component {
             &larr; Back
           </button>
           <h1 className="Title">
-            {node.name}
+            {node.name} (Corda {(node.version || "4_4").replace("_", ".")})
           </h1>
         </header>
         <main className="corda-details-container corda-node-details">

@@ -2,14 +2,11 @@ import connect from "../../../../renderer/screens/helpers/connect";
 
 import React, { Component } from "react";
 import atob from "atob";
-import { basename } from "path"
 import NodeLink from "../components/NodeLink";
 import TransactionLink from "../components/TransactionLink";
 import TransactionData from "../transaction-data";
 import { CancellationToken } from "./utils";
-
-// this is taken from braid
-const VERSION_REGEX = /^(.*?)(?:-(?:(?:\d|\.)+))\.jar?$/;
+import { cordaNickname } from "../utils/nickname";
 
 class Cordapp extends Component {
   refresher = new CancellationToken();
@@ -38,7 +35,7 @@ class Cordapp extends Component {
 
   getNodes(){
     const workspace = this.props.config.settings.workspace;
-    return [...workspace.nodes, ...workspace.notaries].filter(node => (node.cordapps || []).includes(this.state.cordapp));
+    return [...workspace.nodes, ...workspace.notaries].filter(node => (node.jars || []).includes(this.state.cordapp));
   }
 
   async refresh() {
@@ -60,6 +57,7 @@ class Cordapp extends Component {
         tx.details = details;
       })
     }));
+    if (canceller.cancelled) return;
     const transactions = allTransactions.filter(({details}) => {
       if (details && details.commands && details.commands.length) {
         return details.commands.some(({contractFile}) => contractFile.includes(cordapp));
@@ -95,7 +93,7 @@ class Cordapp extends Component {
     const cordapp = atob(props.match.params.cordapp);
     return {
       cordapp,
-      nickname: VERSION_REGEX.exec(basename(cordapp))[1].toLowerCase()
+      nickname: cordaNickname(cordapp)
     };
   }
 

@@ -25,6 +25,7 @@ function getConnectedClient(database, port) {
       database,
       port
     });
+    pool.on("error", console.log);
     pools.set(key, pool);
   } else {
     pool = pools.get(key);
@@ -95,7 +96,7 @@ export default class TransactionData {
   static async downloadAttachment(name, attachment_id, database) {
     const toLocalPath = resolve(remote.app.getPath("downloads"), name);
 
-    const userChosenPath = await dialog.showSaveDialog({ defaultPath: toLocalPath });
+    const userChosenPath = await dialog.showSaveDialog(remote.getCurrentWindow(), { defaultPath: toLocalPath });
 
     if (userChosenPath && !userChosenPath.canceled) {
       const destination = userChosenPath.filePath;

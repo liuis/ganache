@@ -24,7 +24,7 @@ class AppShell extends Component {
     this.scrollDedupeTimeout = null; 
   }
   componentDidUpdate(prevProps) {
-    if (prevProps.network.toast.date !== this.props.network.toast.date) {
+    if (prevProps.network.toast.date !== this.props.network.toast.date && this.props.network.toast.message !== null) {
       clearTimeout(this.toastTimer);
       if (!this.props.network.toast.infinite) {
         this.toastTimer = setTimeout(() => {
@@ -80,7 +80,6 @@ class AppShell extends Component {
         >
           <BugModal
             systemError={this.props.core.systemError}
-            logs={this.props.logs}
           />
         </OnlyIf>
         <OnlyIf test={this.props.core.modalError != null}>
@@ -110,8 +109,6 @@ export default connect(
   AppShell,
   "appshell",
   "core",
-  "config",
-  "logs",
   "autoUpdate",
   "network"
 );

@@ -28,12 +28,18 @@ module.exports = (POSTGRES_PATH) => {
         database,
         port
       });
+      // swallow errors because we're (probably) just shutting down:
+      pool.on("error", console.log);
       postgres.pools.set(key, pool);
     } else {
       pool = postgres.pools.get(key);
     }
     
-    return pool.connect();
+    return pool.connect().then(client => {
+      // swallow errors because we're (probably) just shutting down:
+      client.on("error", console.log);
+      return client;
+    });
   }
 
   async function initSchema(port, schemaNames) {
@@ -70,13 +76,13 @@ module.exports = (POSTGRES_PATH) => {
         // initialize a postgres database
         await spawn(INITDB, ["--pgdata", dataDir, "--username", "postgres"], config);
       }
-      
+
       // make sure there are no databases of ours running on this port...
       await postgres.stop(port);
-      
+
       // TODO: figure out what postgres needs on Windows from the process.env and only supply that.
       // start the postgres server
-      const maxConnections = Math.min(Math.max(100, schemaNames.length * 10), 1000);
+      const maxConnections = Math.min(Math.max(100, schemaNames.length * schemaNames.length), 10000);
       await spawn(PG_CTL, ["-o", `-F -p ${port} -N ${maxConnections}`, "-D", dataDir, "-l", join(dataDir, "postgres-logfile.log"), "-w", "start"]);
       
       try {
@@ -129,8 +135,6 @@ module.exports = (POSTGRES_PATH) => {
       } catch(e) {
         // if we are here it just means we don't have a db connected yet or we just can't connect to the database
         // that is running on this port :-/
-        // eslint-disable-next-line no-console
-        console.log(e);
       }
       finally {
         client && client.release();

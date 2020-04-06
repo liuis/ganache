@@ -9,6 +9,7 @@ import CordaNodes from "../integrations/corda/renderer/screens/Nodes";
 import CordaNode from "../integrations/corda/renderer/screens/NodeDetails";
 import CordaTransactions from "../integrations/corda/renderer/screens/Transactions";
 import CordaTransaction from "../integrations/corda/renderer/screens/Transaction";
+import CordaShells from "../integrations/corda/renderer/screens/Shells";
 import CordaCordapps from "../integrations/corda/renderer/screens/Cordapps";
 import CordaCordapp from "../integrations/corda/renderer/screens/Cordapp";
 
@@ -48,6 +49,8 @@ class FlavorRoutes extends Component {
           component={EventDetailsScreen}
         />
         <Route path="/notfound" component={NotFoundScreen} />
+        
+        <Route path="/config/corda/:activeTab?" component={ConfigScreen} />
         <Route path="/config/:activeTab?" component={ConfigScreen} />
 
         <Route exact path="/corda">
@@ -57,6 +60,8 @@ class FlavorRoutes extends Component {
         <Route path="/corda/nodes/:node" component={CordaNode} />
         <Route exact path="/corda/cordapps" component={CordaCordapps} />
         <Route path="/corda/cordapps/:cordapp" component={CordaCordapp} />
+        <Route exact path="/corda/shells" component={CordaShells} />
+        <Route path="/corda/shells/:context" component={CordaShells} />
         <Route exact path="/corda/transactions" component={CordaTransactions} />
         <Route path="/corda/transactions/:txhash" component={CordaTransaction} />
       </Switch>
