@@ -73,6 +73,7 @@
     "react": "16.5.2",
     "react-custom-scrollbars": "^4.2.1",
     "react-dom": "16.5.2",
+    "react-graph-vis": "1.0.5",
     "react-hot-loader": "4.3.12",
     "react-md-spinner": "^1.0.0",
     "react-moment": "^0.2.2",
@@ -88,12 +89,14 @@
     "safe-buffer": "^5.0.1",
     "shebang-loader": "^0.0.1",
     "source-map-support": "^0.5.13",
-    "truffle": "^5.0.37",
+    "truffle": "5.1.20",
     "universal-analytics": "^0.4.13",
     "unzip-stream": "0.3.0",
-    "web3": "1.2.1",
-    "web3-providers-http": "1.2.1",
-    "web3-providers-ws": "1.2.1"
+    "web3": "1.2.6",
+    "web3-providers-http": "1.2.6",
+    "web3-providers-ws": "1.2.6",
+    "xterm": "^4.4.0",
+    "xterm-addon-fit": "^0.3.0"
   },
   "devDependencies": {
     "@babel/plugin-proposal-class-properties": "^7.5.5",
@@ -103,8 +106,10 @@
     "babel-eslint": "10.0.3",
     "cache-loader": "4.1.0",
     "cross-env": "^6.0.0",
-    "electron": "^6.0.9",
+    "electron": "8.1.1",
     "electron-builder": "^21.2.0",
+    "electron-devtools-installer": "^2.2.4",
+    "electron-notarize": "0.2.1",
     "electron-updater": "4.2.0",
     "electron-webpack": "^2.7.4",
     "eslint": "^6.3.0",
@@ -113,7 +118,8 @@
     "eslint-plugin-prettier": "^3.1.0",
     "eslint-plugin-react": "^7.14.3",
     "eslint-plugin-react-hooks": "^2.1.0",
-    "ganache-core": "2.9.3-beta.0",
+    "ganache-core": "2.10.2",
+    "html-loader": "1.0.0-alpha.0",
     "husky": "^3.0.5",
     "jest": "^24.9.0",
     "js-scrypt": "^0.2.0",
@@ -162,6 +168,7 @@
   "build": {
     "npmRebuild": false,
     "appId": "org.trufflesuite.ganache",
+    "afterSign": "./afterSignHook.js",
     "files": [
       "src/**/*",
       "node_modules/**/*",
@@ -201,6 +208,8 @@
     },
     "mac": {
       "icon": "static/icons/mac/icon.icns",
+      "hardenedRuntime": true,
+      "entitlements": "./build/dmg/entitlements.mac.inherit.plist",
       "category": "public.app-category.developer-tools"
     },
     "dmg": {
@@ -240,6 +249,6 @@
     }
   },
   "engines": {
-    "node": "12.9.0"
+    "node": "12.13.1"
   }
 }

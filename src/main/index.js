@@ -32,6 +32,7 @@ import {
   DELETE_WORKSPACE,
   SET_CURRENT_WORKSPACE,
   OPEN_NEW_WORKSPACE_CONFIG,
+  OPEN_WORKSPACE_CONFIG,
   DOWNLOAD_EXTRAS,
 } from "../common/redux/workspaces/actions";
 import {
@@ -51,6 +52,7 @@ const isDevMode = process.execPath.match(/[\\/]electron/) !== null;
 const isDevelopment = process.env.NODE_ENV !== 'production';
 
 let mainWindow = null;
+const { default: installExtension, REDUX_DEVTOOLS, REACT_DEVELOPER_TOOLS } = require('electron-devtools-installer');
 
 process.on("uncaughtException", err => {
   if (mainWindow && err) {
@@ -64,7 +66,8 @@ process.on("unhandledRejection", err => {
   }
 })
 
-app.setName("Ganache");
+app.name = "Ganache";
+app.allowRendererProcessReuse = true;
 if (isDevMode) {
   // electron can't get the version from our package.json when
   // launched via `webpack-electron dev`. This makes electron-updater
@@ -123,6 +126,17 @@ const performShutdownTasks = async (integrations) => {
   }
 };
 
+function addLogLines(data, context = undefined) {
+  // `mainWindow` can be null/undefined here if the process is killed
+  // (common when developing)
+  if (mainWindow) {
+    mainWindow.webContents.send(ADD_LOG_LINES, data.toString().split(/\n/g), context);
+  } else {
+    // eslint-disable-next-line no-console
+    console.error(data.toString());
+  }
+}
+
 // create main BrowserWindow when electron is ready
 app.on('ready', () => {
   const global = new GlobalSettings(path.join(USERDATA_PATH, "global"));
@@ -141,6 +155,7 @@ app.on('ready', () => {
   });
   integrations.on("progress", function(message, minDuration = null) {
     mainWindow.webContents.send(SET_PROGRESS, message, minDuration);
+    addLogLines(message + "\n");
   });
   
   const workspaceManager = integrations.workspaceManager;
@@ -169,6 +184,14 @@ app.on('ready', () => {
   Menu.setApplicationMenu(null)
 
   app.commandLine.appendSwitch("ignore-certificate-errors", "true");
+  
+  app.on('certificate-error', (event, _webContents, _url, _error, _certificate, callback) => {
+    // On certificate error we disable default behaviour (stop loading the page)
+    // and we then say "it is all fine - true" to the callback
+    event.preventDefault();
+    callback(true);
+});
+
   mainWindow = new BrowserWindow({
     show: false,
     minWidth: 950,
@@ -178,14 +201,18 @@ app.on('ready', () => {
     frame: true,
     icon: getIconPath(),
     webPreferences: {
-      nodeIntegration: true
+      nodeIntegration: true,
+      enableRemoteModule:true
     }
   });
 
   // Open the DevTools.
   if (isDevMode) {
-    //installExtension(REACT_DEVELOPER_TOOLS);
-    //mainWindow.webContents.openDevTools();
+    installExtension(REACT_DEVELOPER_TOOLS).then(() => {
+      installExtension(REDUX_DEVTOOLS).then(() => {
+        mainWindow.webContents.openDevTools();
+      });
+    });
   }
 
   if (isDevelopment) {
@@ -342,16 +369,6 @@ app.on('ready', () => {
       }
     });
 
-    function addLogLines(data, context) {
-      // `mainWindow` can be null/undefined here if the process is killed
-      // (common when developing)
-      if (mainWindow) {
-        mainWindow.webContents.send(ADD_LOG_LINES, data.toString().split(/\n/g), context);
-      } else {
-        // eslint-disable-next-line no-console
-        console.error(data.toString());
-      }
-    }
     integrations.on("stdout", addLogLines);
     integrations.on("stderr", addLogLines);
     integrations.on("error", async _error => {
@@ -371,7 +388,7 @@ app.on('ready', () => {
         flavor
       });
       try {
-        await extras.downloadAll(true);
+        await extras.downloadRequired(true);
         mainWindow.webContents.send(DOWNLOAD_EXTRAS, {
           status: "success",
           flavor
@@ -392,6 +409,8 @@ app.on('ready', () => {
   });
   
   ipcMain.on(DELETE_WORKSPACE, async (event, name, flavor) => {
+    await integrations.stopServer();
+
     const tempWorkspace = workspaceManager.get(name, flavor);
     if (tempWorkspace) {
       tempWorkspace.delete();
@@ -459,6 +478,7 @@ app.on('ready', () => {
     let tempWorkspace = {};
     merge(tempWorkspace, { projects }, workspace);
     delete tempWorkspace.contractCache;
+    delete tempWorkspace.settings;
 
     mainWindow.webContents.send(
       SET_CURRENT_WORKSPACE,
@@ -470,24 +490,31 @@ app.on('ready', () => {
     mainWindow.webContents.send(
       SET_SETTINGS,
       globalSettings,
-      tempWorkspace.settings.getAll(),
+      workspace.settings.getAll(),
     );
 
     startupMode = STARTUP_MODE.NORMAL;
-    await integrations.startServer();
-
-    // this sends the network interfaces to the renderer process for
-    //  enumering in the config screen. it sends repeatedly
-    continuouslySendNetworkInterfaces();
+    if (await integrations.startServer()){
+      // this sends the network interfaces to the renderer process for
+      //  enumering in the config screen. it sends repeatedly
+      continuouslySendNetworkInterfaces();
+    }
   });
 
   ipcMain.on(OPEN_NEW_WORKSPACE_CONFIG, async (_event, flavor = "ethereum") => {
+    ipcMain.emit(OPEN_WORKSPACE_CONFIG, _event, null, flavor);
+  });
+
+  ipcMain.on(OPEN_WORKSPACE_CONFIG, async (_event, workspaceName, flavor) => {
     await integrations.stopServer();
 
     global.set("last_flavor", flavor);
 
-    const defaultWorkspace = workspaceManager.get(null, flavor);
-    const workspaceName = moniker.choose();
+    startupMode = workspaceName ? STARTUP_MODE.EDIT_WORKSPACE : STARTUP_MODE.NEW_WORKSPACE;
+    const defaultWorkspace = workspaceManager.get(workspaceName || null, flavor);
+    if (!workspaceName) {
+      workspaceName = moniker.choose();
+    }
     const wallet = new ethagen({ entropyBits: 128 });
     defaultWorkspace.saveAs(
       workspaceName,
@@ -504,6 +531,7 @@ app.on('ready', () => {
     let tempWorkspace = {};
     merge(tempWorkspace, {}, workspace);
     delete tempWorkspace.contractCache;
+    delete tempWorkspace.settings;
 
     mainWindow.webContents.send(
       SET_CURRENT_WORKSPACE,
@@ -511,10 +539,11 @@ app.on('ready', () => {
       workspace.contractCache.getAll(),
     );
 
-    startupMode = STARTUP_MODE.NEW_WORKSPACE;
     if (flavor === "ethereum") {
       await integrations.startChain();
-      await integrations.startServer();
+      if (!(await integrations.startServer())) {
+        return;
+      }
     } else {
       if (workspace) {
         const globalSettings = global.getAll();
@@ -581,6 +610,7 @@ app.on('ready', () => {
       let tempWorkspace = {};
       merge(tempWorkspace, { projects }, workspace);
       delete tempWorkspace.contractCache;
+      delete tempWorkspace.settings;
 
       mainWindow.webContents.send(
         SET_WORKSPACES,
@@ -601,10 +631,10 @@ app.on('ready', () => {
 
       startupMode = STARTUP_MODE.NORMAL;
 
-      await integrations.startServer();
-
-      // send the interfaces again once on restart
-      sendNetworkInterfaces();
+      if (await integrations.startServer()){
+        // send the interfaces again once on restart
+        sendNetworkInterfaces();
+      }
     }
   });
 

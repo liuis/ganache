@@ -1,13 +1,12 @@
 import connect from "../../../../renderer/screens/helpers/connect";
-
-import React, { Component } from "react";
-import NodeLink from "../components/NodeLink";
-import CordAppLink from "../components/CordAppLink";
 import TransactionLink from "../components/TransactionLink";
+import CordAppLink from "../components/CordAppLink";
 import TransactionData from "../transaction-data";
-
-// this is taken from braid
-const VERSION_REGEX = /^(.*?)(?:-(?:(?:\d|\.)+))\.jar?$/;
+import { CancellationToken } from "../screens/utils";
+import NodeLink from "../components/NodeLink";
+import React, { Component } from "react";
+import { startNode } from "../../../../common/redux/config/actions";
+import { cordaNickname } from "../utils/nickname";
 
 function filterNodeBy(nodeToMatch) {
   return (node) => {
@@ -16,10 +15,16 @@ function filterNodeBy(nodeToMatch) {
 }
 
 class NodeDetails extends Component {
+  refresher = new CancellationToken();
+
   constructor(props) {
     super(props);
 
     this.state = {node: this.findNodeFromProps(), nodes:null, notaries:null, cordapps: null, transactions: null};
+  }
+
+  componentWillUnmount() {
+    this.refresher.cancel();
   }
 
   findNodeFromProps(){
@@ -43,17 +48,31 @@ class NodeDetails extends Component {
   }
 
   refresh() {
+    this.refresher.cancel();
+
+    let canceller = this.refresher.getCanceller();
+
     if (this.state.node) {
-      const nodes = this.props.config.settings.workspace.nodes;
+      const nodes = this.props.config.settings.workspace.nodes.filter(node => {
+        return this.props.config.cordaNodeStatus[node.safeName] !== "stopped";
+      });
       const postgresPort =  this.props.config.settings.workspace.postgresPort;
 
       const notariesProm = fetch("https://localhost:" + (this.state.node.braidPort) + "/api/rest/network/notaries")
-        .then(r => r.json()).then(json => {
+        .then(r => r.json())
+        .then(json => {
           if(Array.isArray(json)) return json;
           return [];
         })
 
-      notariesProm.then(notaries => this.setState({notaries}));
+      notariesProm.then(notaries => {
+        if (canceller.cancelled) return;
+        notaries = notaries.filter(notary => {
+          const workspaceNode = this.getWorkspaceNotary(notary.owningKey);
+          return this.props.config.cordaNodeStatus[workspaceNode.safeName] !== "stopped";
+        });
+        this.setState({notaries});
+      });
 
       fetch("https://localhost:" + (this.state.node.braidPort) + "/api/rest/network/nodes")
         .then(r => r.json())
@@ -62,8 +81,12 @@ class NodeDetails extends Component {
           return [];
         })
         .then(async nodes => {
+          if (canceller.cancelled) return;
+
           const selfName = this.state.node.name.replace(/\s/g, "");
           const notaries = await notariesProm;
+
+          if (canceller.cancelled) return;
           const notariesMap = new Set(notaries.map(notary => notary.owningKey));
           const nodesMap = new Map();
           nodes.forEach(node => {
@@ -76,8 +99,11 @@ class NodeDetails extends Component {
                 return false;
               } else {
                 // filter out notaries
-                if(!notariesMap.has(nodeIdent.owningKey)){
-                  nodesMap.set(nodeIdent.owningKey, node);
+                if (!notariesMap.has(nodeIdent.owningKey)) {
+                  const workspaceNode = this.getWorkspaceNode(nodeIdent.owningKey);
+                  if (this.props.config.cordaNodeStatus[workspaceNode.safeName] !== "stopped") {
+                    nodesMap.set(nodeIdent.owningKey, node);
+                  }
                 }
               }
             });
@@ -88,6 +114,8 @@ class NodeDetails extends Component {
       fetch("https://localhost:" + (this.state.node.braidPort) + "/api/rest/cordapps")
         .then(r => r.json())
         .then(json => {
+          if (canceller.cancelled) return;
+
           if(Array.isArray(json)) return json;
           return [];
         })
@@ -96,6 +124,8 @@ class NodeDetails extends Component {
       fetch("https://localhost:" + (this.state.node.braidPort) + "/api/rest/network/nodes/self")
         .then(r => r.json())
         .then(self => {
+          if (canceller.cancelled) return;
+
           fetch("https://localhost:" + (this.state.node.braidPort) + "/api/rest/vault/vaultQueryBy", {
             method: "POST",
             headers: {
@@ -112,10 +142,14 @@ class NodeDetails extends Component {
           })
           .then(res => res.json())
           .then(json => {
+            if (canceller.cancelled) return;
+
             if (json && Array.isArray(json.states)) return json;
             return [];
           })
           .then(json => {
+            if (canceller.cancelled) return;
+
             const transactionPromises = [];
             const hashes = new Set();
             json.states.forEach(state => {
@@ -127,6 +161,8 @@ class NodeDetails extends Component {
             })
             return Promise.all(transactionPromises);
           }).then(transactions => {
+            if (canceller.cancelled) return;
+
             this.setState(state => {
               return {transactions: [...state.transactions || [], ...transactions]};
             });
@@ -135,18 +171,24 @@ class NodeDetails extends Component {
 
       TransactionData.getConnectedClient(this.state.node.safeName, this.props.config.settings.workspace.postgresPort)
         .then(async client => {
+          if (canceller.cancelled) return;
+
           try {
             return await client.query("SELECT transaction_id FROM node_notary_committed_txs");
           } finally {
             client.release();
           }
         }).then(async res => {
+          if (canceller.cancelled) return;
+
           const proms = Promise.all(res.rows.map(row => {
             const tx = new TransactionData(TransactionData.convertTransactionIdToHash(row.transaction_id));
             return tx.update(nodes, postgresPort);
           }));
           
           const transactions = await proms;
+          if (canceller.cancelled) return;
+
           this.setState(state => {
             return {transactions: [...(state.transactions || []), ...transactions]};
           });
@@ -165,7 +207,7 @@ class NodeDetails extends Component {
   }
 
   getWorkspaceCordapp(name) {
-    return this.props.config.settings.workspace.projects.find(cordapp => VERSION_REGEX.exec(cordapp)[1].toLowerCase().endsWith(name.toLowerCase()));
+    return this.props.config.settings.workspace.jars.find(cordapp => cordaNickname(cordapp).endsWith(name.toLowerCase()));
   }
 
   getCordapps(){
@@ -187,7 +229,7 @@ class NodeDetails extends Component {
 
   getConnectedNodes(){
     const loading = (<div className="Waiting Waiting-Padded">Loading Nodes &amp; Notaries...</div>);
-    const noPeers = (<div className="Waiting Waiting-Padded">No Node &amp; Notary peers...</div>);
+    const noPeers = (<div className="Waiting Waiting-Padded">No Connected Nodes or Notaries</div>);
     let nodes = [];
     let hasNoPeers = (!!this.state.nodes && !!this.state.notaries);
     if (this.state.nodes) {
@@ -247,6 +289,29 @@ class NodeDetails extends Component {
       return (<div className="Waiting Waiting-Padded">Couldn&apos;t locate node: {this.props.match.params.node}</div>);
     }
 
+    let restartButton = <></>;
+    const status = this.props.config.cordaNodeStatus[node.safeName];
+    const style = {
+      position: "absolute",
+      right: "1.5rem",
+      top: "50%",
+      transform: "translateY(-50%)"
+    };
+    if (status === "stopped") {
+      restartButton = (<div style={style}>
+        <span>Node is stopped!</span> <button style={{marginLeft: "1rem"}} onClick={()=>this.props.dispatch(startNode(node.safeName))}>Restart</button>
+      </div>);
+    } else if (status === "starting") {
+      restartButton = (<div style={{
+          position: "absolute",
+          right: "1.5rem",
+          top: "50%",
+          transform: "translateY(-50%)"
+        }}>
+          <span>Node is starting...</span>
+        </div>);
+    }
+
     return (
       <section className="BlockCard">
         <header>
@@ -254,12 +319,18 @@ class NodeDetails extends Component {
             &larr; Back
           </button>
           <h1 className="Title">
-            {node.name}
+            {node.name} (Corda {(node.version || "4_4").replace("_", ".")})
           </h1>
         </header>
         <main className="corda-details-container corda-node-details">
           <div className="corda-details-section">
-            <h3 className="Label">Connection Details</h3>
+            <h3 className="Label">
+              Connection Details
+
+              {
+                restartButton
+              }
+            </h3>
             <div className="DataRow corda-node-details-ports corda-details-section corda-details-padded">
               <div>
                 <div className="Label">RPC Port</div>

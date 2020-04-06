@@ -2,13 +2,10 @@ const { Pool } = require("pg");
 const fs = require("graceful-fs");
 const { join } = require("path");
 const { spawn } = require("promisify-child-process");
-const temp = require("temp");
 const { promisify } = require("util");
-const mkdir = promisify(temp.mkdir);
 const exists = promisify(fs.exists);
 
 const USER = "ganache";
-const DATA_DIR = "__ganache_pg_data_";
 const config = {env: process.env, encoding: "utf8"};
 
 module.exports = (POSTGRES_PATH) => {
@@ -17,6 +14,8 @@ module.exports = (POSTGRES_PATH) => {
   const PG_CTL = pgJoin("pg_ctl");
   const CREATEUSER = pgJoin("createuser");
   const CREATEDB = pgJoin("createdb");
+
+  const POSTGRES_DATA_DIR = "__ganache__postgres_data";
 
   function getConnectedClient(database, port) {
     let pool;
@@ -29,12 +28,18 @@ module.exports = (POSTGRES_PATH) => {
         database,
         port
       });
+      // swallow errors because we're (probably) just shutting down:
+      pool.on("error", console.log);
       postgres.pools.set(key, pool);
     } else {
       pool = postgres.pools.get(key);
     }
     
-    return pool.connect();
+    return pool.connect().then(client => {
+      // swallow errors because we're (probably) just shutting down:
+      client.on("error", console.log);
+      return client;
+    });
   }
 
   async function initSchema(port, schemaNames) {
@@ -55,17 +60,9 @@ module.exports = (POSTGRES_PATH) => {
   }
 
   const postgres = {
-    start: async (port, safeWorkspaceName, schemaNames, isTemp = false) => {
-      let dataDir;
-      let doesExist = false;
-
-      if (isTemp) {
-        temp.track();
-        dataDir = await mkdir(DATA_DIR);
-      } else {
-        dataDir = join(safeWorkspaceName, DATA_DIR);
-        doesExist = await exists(dataDir);
-      }
+    start: async (port, safeWorkspaceName, schemaNames) => {
+      const dataDir = join(safeWorkspaceName, POSTGRES_DATA_DIR);
+      const doesExist = await exists(dataDir);
 
       const stop = () => spawn(PG_CTL, ["stop" ,"-D", dataDir], config);
 
@@ -85,7 +82,8 @@ module.exports = (POSTGRES_PATH) => {
 
       // TODO: figure out what postgres needs on Windows from the process.env and only supply that.
       // start the postgres server
-      await spawn(PG_CTL, ["-o", `-F -p ${port}`, "-D", dataDir, "-l", join(dataDir, "postgres-logfile.log"), "-w", "start"]);
+      const maxConnections = Math.min(Math.max(100, schemaNames.length * schemaNames.length), 10000);
+      await spawn(PG_CTL, ["-o", `-F -p ${port} -N ${maxConnections}`, "-D", dataDir, "-l", join(dataDir, "postgres-logfile.log"), "-w", "start"]);
       
       try {
         await initSchema(port, schemaNames);
@@ -137,8 +135,6 @@ module.exports = (POSTGRES_PATH) => {
       } catch(e) {
         // if we are here it just means we don't have a db connected yet or we just can't connect to the database
         // that is running on this port :-/
-        // eslint-disable-next-line no-console
-        console.log(e);
       }
       finally {
         client && client.release();
@@ -147,7 +143,7 @@ module.exports = (POSTGRES_PATH) => {
 
       if (res && res.rows && res.rows.length > 0) {
         const connectedDataDir = res.rows[0].data_directory;
-        if (connectedDataDir.includes(DATA_DIR)) {
+        if (connectedDataDir.includes(POSTGRES_DATA_DIR)) {
           try {
             await spawn(pgJoin("pg_ctl"), ["-D", connectedDataDir, "stop"], config);
           } catch(e) {

@@ -12,7 +12,7 @@ class Braid {
     const name = entity.safeName;
     const exists = this.servers.get(name);
     if (!exists) {
-      const args = ["-jar", "braid-server.jar", `localhost:${entity.rpcPort}`, "user1", "letmein", entity.braidPort, 3, ...(entity.cordapps || [])];
+      const args = ["-jar", "braid-server.jar", `localhost:${entity.rpcPort}`, "user1", "letmein", entity.braidPort, 3, ...(entity.jars || [])];
       // figure out which partsof teh env are actually needed...
       const copyEnv = ["APPDATA", "COMSPEC", "HOME", "HOMEDRIVE", "HOMEPATH", "LANG", "LOCALAPPDATA", "OS", "ProgramData", "TEMP", "TMP", "WINDIR"];
       const env = copyEnv.reduce((env, name) => (env[name] = process.env[name], env), {});
@@ -37,7 +37,7 @@ class Braid {
         const close = (code) => {
           // TODO: handle premature individual node shutdown
           /// close postgres, close other nodes, what do?
-          reject(new Error(`child process exited with code ${code}`));
+          reject(new Error(`braid-server.jar child process exited with code ${code}`));
         }
         braid.once("close", close);
 
