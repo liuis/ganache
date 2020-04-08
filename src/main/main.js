@@ -325,7 +325,7 @@ app.on("ready", () => {
           chain.startServer(workspaceSettings);
         }
       });
-
+      //TODO, modifying  the data
       chain.on("server-started", data => {
         if (workspace) {
           mainWindow.webContents.send(SET_KEY_DATA, {

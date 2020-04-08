@@ -45,6 +45,7 @@ export function initCore(store) {
         "0.0.0.0",
         "localhost",
       );
+      //TODO , no  ws server , use the looppull
       const url = `ws://${hostname}:${workspaceSettings.server.port}`;
 
       ipcRenderer.send("web3-provider", url);

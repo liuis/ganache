@@ -51,7 +51,7 @@ export const SET_KEY_DATA = `${prefix}/SET_KEY_DATA`;
 export function setKeyData(mnemonic, hdPath, privateKeys) {
   return { type: SET_KEY_DATA, mnemonic, hdPath, privateKeys };
 }
-
+//TODO: 0407
 export const SET_GAS_PRICE = `${prefix}/SET_GAS_PRICE`;
 export const getGasPrice = function() {
   return async function(dispatch, getState) {
